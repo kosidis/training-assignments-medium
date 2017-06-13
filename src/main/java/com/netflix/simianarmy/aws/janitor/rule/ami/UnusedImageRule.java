@@ -22,6 +22,8 @@ import com.netflix.simianarmy.MonkeyCalendar;
 import com.netflix.simianarmy.Resource;
 import com.netflix.simianarmy.aws.AWSResource;
 import com.netflix.simianarmy.aws.janitor.crawler.edda.EddaImageJanitorCrawler;
+import com.netflix.simianarmy.aws.janitor.crawler.edda.UpdateReferenceTimeByInstance;
+import com.netflix.simianarmy.aws.janitor.crawler.edda.UpdateReferenceTimeByLaunchConfig;
 import com.netflix.simianarmy.janitor.Rule;
 import org.apache.commons.lang.Validate;
 import org.joda.time.DateTime;
@@ -76,8 +78,8 @@ public class UnusedImageRule  implements Rule {
                     resource.getId()));
             return true;
         }
-        long instanceRefTime = getRefTimeInMilis(resource, EddaImageJanitorCrawler.AMI_FIELD_LAST_INSTANCE_REF_TIME);
-        long lcRefTime = getRefTimeInMilis(resource, EddaImageJanitorCrawler.AMI_FIELD_LAST_LC_REF_TIME);
+        long instanceRefTime = getRefTimeInMilis(resource, UpdateReferenceTimeByInstance.AMI_FIELD_LAST_INSTANCE_REF_TIME);
+        long lcRefTime = getRefTimeInMilis(resource, UpdateReferenceTimeByLaunchConfig.AMI_FIELD_LAST_LC_REF_TIME);
         Date now = calendar.now().getTime();
         long windowStart = new DateTime(now.getTime()).minusDays(lastReferenceDaysThreshold).getMillis();
         if (instanceRefTime < windowStart && lcRefTime < windowStart) {

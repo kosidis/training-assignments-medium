@@ -28,7 +28,6 @@ import com.netflix.simianarmy.aws.AWSResourceType;
 import com.netflix.simianarmy.basic.BasicSimianArmyContext;
 import com.netflix.simianarmy.client.edda.EddaClient;
 import com.netflix.simianarmy.janitor.JanitorCrawler;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.codehaus.jackson.JsonNode;
@@ -54,16 +53,14 @@ import java.util.regex.Pattern;
  */
 public class EddaImageJanitorCrawler implements JanitorCrawler {
 
-    /** The Constant LOGGER. */
+    /**
+     * The Constant LOGGER.
+     */
     private static final Logger LOGGER = LoggerFactory.getLogger(EddaImageJanitorCrawler.class);
 
-    /** The name representing the additional field name for the last reference time by instance. */
-    public static final String AMI_FIELD_LAST_INSTANCE_REF_TIME = "Last_Instance_Reference_Time";
-
-    /** The name representing the additional field name for the last reference time by launch config. */
-    public static final String AMI_FIELD_LAST_LC_REF_TIME = "Last_Launch_Config_Reference_Time";
-
-    /** The name representing the additional field name for whether the image is a base image. **/
+    /**
+     * The name representing the additional field name for whether the image is a base image.
+     **/
     public static final String AMI_FIELD_BASE_IMAGE = "Base_Image";
 
     private static final int BATCH_SIZE = 500;
@@ -87,12 +84,10 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
 
     /**
      * Instantiates a new basic AMI crawler.
-     * @param eddaClient
-     *            the Edda client
-     * @param daysBack
-     *            the number of days that the crawler checks back in history stored in Edda
-     * @param regions
-     *            the regions the crawler will crawl resources for
+     *
+     * @param eddaClient the Edda client
+     * @param daysBack   the number of days that the crawler checks back in history stored in Edda
+     * @param regions    the regions the crawler will crawl resources for
      */
     public EddaImageJanitorCrawler(EddaClient eddaClient, String ownerId, int daysBack, String... regions) {
         Validate.notNull(eddaClient);
@@ -140,7 +135,7 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
             usedNames.add(name);
         }
         LOGGER.info(String.format("%d image names are used across the %d regions.",
-                usedNames.size(), regions.size()));
+            usedNames.size(), regions.size()));
         Collection<String> excludedImageIds = getExcludedImageIds();
         List<Resource> resources = Lists.newArrayList();
         for (String region : regions) {
@@ -153,6 +148,7 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
      * The method allows users to put their own logic to exclude a set of images from being
      * cleaned up by Janitor Monkey. In some cases, images are not used but still need to be
      * kept longer.
+     *
      * @return a collection of image ids that need to be excluded from Janitor Monkey
      */
     protected Collection<String> getExcludedImageIds() {
@@ -177,7 +173,7 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
             jsonNode = eddaClient.getJsonNodeFromUrl(url);
         } catch (Exception e) {
             LOGGER.error(String.format(
-                    "Failed to get Jason node from edda for AMIs in region %s.", region), e);
+                "Failed to get Jason node from edda for AMIs in region %s.", region), e);
         }
 
         if (jsonNode == null || !jsonNode.isArray()) {
@@ -190,7 +186,7 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
         imageIdToName.clear();
         for (String region : regions) {
             JsonNode jsonNode = getImagesInJson(region);
-            for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext();) {
+            for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext(); ) {
                 JsonNode ami = it.next();
                 String imageId = ami.get("imageId").getTextValue();
                 String name = ami.get("name").getTextValue();
@@ -218,15 +214,15 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
                 jsonNode = eddaClient.getJsonNodeFromUrl(url);
             } catch (Exception e) {
                 LOGGER.error(String.format(
-                        "Failed to get Jason node from edda for creation time of AMIs in region %s.", region), e);
+                    "Failed to get Jason node from edda for creation time of AMIs in region %s.", region), e);
             }
 
             if (jsonNode == null || !jsonNode.isArray()) {
                 throw new RuntimeException(String.format("Failed to get valid document from %s, got: %s",
-                        url, jsonNode));
+                    url, jsonNode));
             }
 
-            for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext();) {
+            for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext(); ) {
                 JsonNode elem = it.next();
                 JsonNode data = elem.get("data");
                 String imageId = data.get("imageId").getTextValue();
@@ -234,7 +230,7 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
                 if (ctimeNode != null && !ctimeNode.isNull()) {
                     long ctime = ctimeNode.asLong();
                     LOGGER.debug(String.format("The image record of %s was created in Edda at %s",
-                            imageId, new DateTime(ctime)));
+                        imageId, new DateTime(ctime)));
                     imageIdToCreationTime.put(imageId, ctime);
                 }
             }
@@ -243,25 +239,25 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
     }
 
     private List<Resource> getAMIResourcesInRegion(
-            String region, Collection<String> excludedImageIds, String... imageIds) {
+        String region, Collection<String> excludedImageIds, String... imageIds) {
         JsonNode jsonNode = getImagesInJson(region, imageIds);
         List<Resource> resources = Lists.newArrayList();
-        for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext();) {
+        for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext(); ) {
             JsonNode ami = it.next();
             String imageId = ami.get("imageId").getTextValue();
             Resource resource = parseJsonElementToresource(region, ami);
             String name = ami.get("name").getTextValue();
             if (excludedImageIds.contains(imageId)) {
                 LOGGER.info(String.format("Image %s is excluded from being managed by Janitor Monkey, ignore.",
-                        imageId));
+                    imageId));
                 continue;
             }
             if (usedByInstance.contains(imageId) || usedByLaunchConfig.contains(imageId)) {
                 LOGGER.info(String.format("AMI %s is referenced by existing instance or launch configuration.",
-                        imageId));
+                    imageId));
             } else {
                 LOGGER.info(String.format("AMI %s is not referenced by existing instance or launch configuration.",
-                        imageId));
+                    imageId));
                 if (usedNames.contains(name)) {
                     LOGGER.info(String.format("The same AMI name %s is used in another region", name));
                 } else {
@@ -288,7 +284,7 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
         String imageId = jsonNode.get("imageId").getTextValue();
 
         Resource resource = new AWSResource().withId(imageId).withRegion(region)
-                .withResourceType(AWSResourceType.IMAGE);
+            .withResourceType(AWSResourceType.IMAGE);
 
         Long creationTime = imageIdToCreationTime.get(imageId);
         if (creationTime != null) {
@@ -299,7 +295,7 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
         if (tags == null || !tags.isArray() || tags.size() == 0) {
             LOGGER.debug(String.format("No tags is found for %s", resource.getId()));
         } else {
-            for (Iterator<JsonNode> it = tags.getElements(); it.hasNext();) {
+            for (Iterator<JsonNode> it = tags.getElements(); it.hasNext(); ) {
                 JsonNode tag = it.next();
                 String key = tag.get("key").getTextValue();
                 String value = tag.get("value").getTextValue();
@@ -337,15 +333,15 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
                 jsonNode = eddaClient.getJsonNodeFromUrl(url);
             } catch (Exception e) {
                 LOGGER.error(String.format(
-                        "Failed to get Jason node from edda for AMIs used by instances in region %s.", region), e);
+                    "Failed to get Jason node from edda for AMIs used by instances in region %s.", region), e);
             }
 
             if (jsonNode == null || !jsonNode.isArray()) {
                 throw new RuntimeException(String.format("Failed to get valid document from %s, got: %s",
-                        url, jsonNode));
+                    url, jsonNode));
             }
 
-            for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext();) {
+            for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext(); ) {
                 JsonNode img = it.next();
                 String id = img.get("imageId").getTextValue();
                 usedByInstance.add(id);
@@ -366,15 +362,15 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
                 jsonNode = eddaClient.getJsonNodeFromUrl(url);
             } catch (Exception e) {
                 LOGGER.error(String.format(
-                        "Failed to get Jason node from edda for AMIs used by launch configs in region %s.", region), e);
+                    "Failed to get Jason node from edda for AMIs used by launch configs in region %s.", region), e);
             }
 
             if (jsonNode == null || !jsonNode.isArray()) {
                 throw new RuntimeException(String.format("Failed to get valid document from %s, got: %s",
-                        url, jsonNode));
+                    url, jsonNode));
             }
 
-            for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext();) {
+            for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext(); ) {
                 JsonNode img = it.next();
                 String id = img.get("imageId").getTextValue();
                 usedByLaunchConfig.add(id);
@@ -400,120 +396,13 @@ public class EddaImageJanitorCrawler implements JanitorCrawler {
         for (Map.Entry<String, List<Resource>> entry : regionToResources.entrySet()) {
             String region = entry.getKey();
             LOGGER.info(String.format("Updating the latest reference info for %d images in region %s",
-                    resources.size(), region));
+                resources.size(), region));
             for (List<Resource> batch : Lists.partition(entry.getValue(), BATCH_SIZE)) {
                 LOGGER.info(String.format("Processing batch of size %d", batch.size()));
-                updateReferenceTimeByInstance(region, batch, since);
-                updateReferenceTimeByLaunchConfig(region, batch, since);
+                new UpdateReferenceTimeByInstance(eddaClient).updateReferenceTime(region, batch, since);
+                new UpdateReferenceTimeByLaunchConfig(eddaClient).updateReferenceTime(region, batch, since);
             }
         }
-    }
-
-    private void updateReferenceTimeByInstance(String region, List<Resource> batch, long since) {
-        LOGGER.info(String.format("Getting the last reference time by instance for batch of size %d", batch.size()));
-        String batchUrl = getInstanceBatchUrl(region, batch, since);
-        JsonNode batchResult = null;
-        Map<String, Resource> idToResource = Maps.newHashMap();
-        for (Resource resource : batch) {
-            idToResource.put(resource.getId(), resource);
-        }
-        try {
-            batchResult = eddaClient.getJsonNodeFromUrl(batchUrl);
-        } catch (IOException e) {
-            LOGGER.error("Failed to get response for the batch.", e);
-        }
-        if (batchResult == null || !batchResult.isArray()) {
-            throw new RuntimeException(String.format("Failed to get valid document from %s, got: %s",
-                    batchUrl, batchResult));
-        }
-        for (Iterator<JsonNode> it = batchResult.getElements(); it.hasNext();) {
-            JsonNode elem = it.next();
-            JsonNode data = elem.get("data");
-            String imageId = data.get("imageId").getTextValue();
-            String instanceId = data.get("instanceId").getTextValue();
-            JsonNode ltimeNode = elem.get("ltime");
-            if (ltimeNode != null && !ltimeNode.isNull()) {
-                long ltime = ltimeNode.asLong();
-                Resource ami = idToResource.get(imageId);
-                String lastRefTimeByInstance = ami.getAdditionalField(
-                        AMI_FIELD_LAST_INSTANCE_REF_TIME);
-                if (lastRefTimeByInstance == null || Long.parseLong(lastRefTimeByInstance) < ltime) {
-                    LOGGER.info(String.format("The last time that the image %s was referenced by instance %s is %d",
-                            imageId, instanceId, ltime));
-                    ami.setAdditionalField(AMI_FIELD_LAST_INSTANCE_REF_TIME, String.valueOf(ltime));
-                }
-            }
-        }
-    }
-
-    private void updateReferenceTimeByLaunchConfig(String region, List<Resource> batch, long since) {
-        LOGGER.info(String.format("Getting the last reference time by launch config for batch of size %d",
-                batch.size()));
-        String batchUrl = getLaunchConfigBatchUrl(region, batch, since);
-        JsonNode batchResult = null;
-        Map<String, Resource> idToResource = Maps.newHashMap();
-        for (Resource resource : batch) {
-            idToResource.put(resource.getId(), resource);
-        }
-        try {
-            batchResult = eddaClient.getJsonNodeFromUrl(batchUrl);
-        } catch (IOException e) {
-            LOGGER.error("Failed to get response for the batch.", e);
-        }
-        if (batchResult == null || !batchResult.isArray()) {
-            throw new RuntimeException(String.format("Failed to get valid document from %s, got: %s",
-                    batchUrl, batchResult));
-        }
-        for (Iterator<JsonNode> it = batchResult.getElements(); it.hasNext();) {
-            JsonNode elem = it.next();
-            JsonNode data = elem.get("data");
-            String imageId = data.get("imageId").getTextValue();
-            String launchConfigurationName = data.get("launchConfigurationName").getTextValue();
-            JsonNode ltimeNode = elem.get("ltime");
-            if (ltimeNode != null && !ltimeNode.isNull()) {
-                long ltime = ltimeNode.asLong();
-                Resource ami = idToResource.get(imageId);
-                String lastRefTimeByLC = ami.getAdditionalField(AMI_FIELD_LAST_LC_REF_TIME);
-                if (lastRefTimeByLC == null || Long.parseLong(lastRefTimeByLC) < ltime) {
-                    LOGGER.info(String.format(
-                            "The last time that the image %s was referenced by launch config %s is %d",
-                            imageId, launchConfigurationName, ltime));
-                    ami.setAdditionalField(AMI_FIELD_LAST_LC_REF_TIME, String.valueOf(ltime));
-                }
-            }
-        }
-    }
-
-    private String getInstanceBatchUrl(String region, List<Resource> batch, long since) {
-        StringBuilder batchUrl = new StringBuilder(eddaClient.getBaseUrl(region)
-                + "/view/instances/;data.imageId=");
-        batchUrl.append(getImageIdsString(batch));
-        batchUrl.append(String.format(";data.state.name=terminated;_since=%d;_expand;_meta:"
-                + "(ltime,data:(imageId,instanceId))", since));
-        return batchUrl.toString();
-    }
-
-    private String getLaunchConfigBatchUrl(String region, List<Resource> batch, long since) {
-        StringBuilder batchUrl = new StringBuilder(eddaClient.getBaseUrl(region)
-                + "/aws/launchConfigurations/;data.imageId=");
-        batchUrl.append(getImageIdsString(batch));
-        batchUrl.append(String.format(";_since=%d;_expand;_meta:(ltime,data:(imageId,launchConfigurationName))",
-                since));
-        return batchUrl.toString();
-    }
-
-    private String getImageIdsString(List<Resource> resources) {
-        StringBuilder sb = new StringBuilder();
-        boolean isFirst = true;
-        for (Resource resource : resources) {
-            if (!isFirst) {
-                sb.append(',');
-            } else {
-                isFirst = false;
-            }
-            sb.append(resource.getId());
-        }
-        return sb.toString();
     }
 
     private static String getBaseAmiIdFromDescription(String imageDescription) {
