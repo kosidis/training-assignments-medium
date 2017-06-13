@@ -65,23 +65,23 @@ public class BasicConformityMonkeyContext extends BasicSimianArmyContext impleme
     private static final Logger LOGGER = LoggerFactory.getLogger(BasicConformityMonkeyContext.class);
 
     /** The email notifier. */
-    private final ConformityEmailNotifier emailNotifier;
+    private ConformityEmailNotifier emailNotifier;
 
-    private final ConformityClusterTracker clusterTracker;
+    private ConformityClusterTracker clusterTracker;
 
-    private final Collection<String> regions;
+    private Collection<String> regions;
 
-    private final ClusterCrawler clusterCrawler;
+    private ClusterCrawler clusterCrawler;
 
-    private final AmazonSimpleEmailServiceClient sesClient;
+    private AmazonSimpleEmailServiceClient sesClient;
 
-    private final ConformityEmailBuilder conformityEmailBuilder;
+    private ConformityEmailBuilder conformityEmailBuilder;
 
-    private final String defaultEmail;
+    private String defaultEmail;
 
-    private final String[] ccEmails;
+    private String[] ccEmails;
 
-    private final String sourceEmail;
+    private String sourceEmail;
 
     private final ConformityRuleEngine ruleEngine;
 
@@ -108,7 +108,7 @@ public class BasicConformityMonkeyContext extends BasicSimianArmyContext impleme
         String dbPass = configuration().getStr("simianarmy.recorder.db.pass");
         String dbUrl = configuration().getStr("simianarmy.recorder.db.url");
         String dbTable = configuration().getStr("simianarmy.conformity.resources.db.table");
-        
+
         if (dbDriver == null) {       
         	clusterTracker = new SimpleDBConformityClusterTracker(awsClient(), sdbDomain);
         } else {
@@ -121,74 +121,14 @@ public class BasicConformityMonkeyContext extends BasicSimianArmyContext impleme
         boolean eurekaEnabled = configuration().getBoolOrElse("simianarmy.conformity.Eureka.enabled", false);
 
         if (eurekaEnabled) {
-            LOGGER.info("Initializing Discovery client.");
-            Injector injector = Guice.createInjector(new EurekaModule());
-            DiscoveryClient discoveryClient = injector.getInstance(DiscoveryClient.class);
-            ConformityEurekaClient conformityEurekaClient = new BasicConformityEurekaClient(discoveryClient);
-            if (configuration().getBoolOrElse(
-                    "simianarmy.conformity.rule.InstanceIsHealthyInEureka.enabled", false)) {
-                ruleEngine.addRule(new InstanceIsHealthyInEureka(conformityEurekaClient));
-            }
-            if (configuration().getBoolOrElse(
-                    "simianarmy.conformity.rule.InstanceHasHealthCheckUrl.enabled", false)) {
-                ruleEngine.addRule(new InstanceHasHealthCheckUrl(conformityEurekaClient));
-            }
-            if (configuration().getBoolOrElse(
-                    "simianarmy.conformity.rule.InstanceHasStatusUrl.enabled", false)) {
-                ruleEngine.addRule(new InstanceHasStatusUrl(conformityEurekaClient));
-            }
+            initializeDiscoveryClient();
         } else {
             LOGGER.info("Discovery/Eureka is not enabled, the conformity rules that need Eureka are not added.");
         }
-
-        if (configuration().getBoolOrElse(
-                "simianarmy.conformity.rule.InstanceInSecurityGroup.enabled", false)) {
-            String requiredSecurityGroups = configuration().getStr(
-                    "simianarmy.conformity.rule.InstanceInSecurityGroup.requiredSecurityGroups");
-            if (!StringUtils.isBlank(requiredSecurityGroups)) {
-                ruleEngine.addRule(new InstanceInSecurityGroup(getAwsCredentialsProvider(),
-                        StringUtils.split(requiredSecurityGroups, ",")));
-            } else {
-                LOGGER.info("No required security groups is specified, "
-                        + "the conformity rule InstanceInSecurityGroup is ignored.");
-            }
-        }
-
-        if (configuration().getBoolOrElse(
-                "simianarmy.conformity.rule.InstanceTooOld.enabled", false)) {
-                ruleEngine.addRule(new InstanceTooOld(getAwsCredentialsProvider(), (int) configuration().getNumOrElse(
-                        "simianarmy.conformity.rule.InstanceTooOld.instanceAgeThreshold", 180)));
-        }
-
-        if (configuration().getBoolOrElse(
-                "simianarmy.conformity.rule.SameZonesInElbAndAsg.enabled", false)) {
-            ruleEngine().addRule(new SameZonesInElbAndAsg(getAwsCredentialsProvider()));
-        }
-
-        if (configuration().getBoolOrElse(
-                "simianarmy.conformity.rule.InstanceInVPC.enabled", false)) {
-                ruleEngine.addRule(new InstanceInVPC(getAwsCredentialsProvider()));
-        }
-
-        if (configuration().getBoolOrElse(
-                "simianarmy.conformity.rule.CrossZoneLoadBalancing.enabled", false)) {
-                ruleEngine().addRule(new CrossZoneLoadBalancing(getAwsCredentialsProvider()));
-        }
-        
+        addRules();
         createClient(region());
-        regionToAwsClient.put(region(), awsClient());
+        initializeContextParameters();
 
-        clusterCrawler = new AWSClusterCrawler(regionToAwsClient, configuration());
-        sesClient = new AmazonSimpleEmailServiceClient();
-        if (configuration().getStr("simianarmy.aws.email.region") != null) {
-          sesClient.setRegion(Region.getRegion(Regions.fromName(configuration().getStr("simianarmy.aws.email.region"))));
-        }        
-        defaultEmail = configuration().getStrOrElse("simianarmy.conformity.notification.defaultEmail", null);
-        ccEmails = StringUtils.split(
-                configuration().getStrOrElse("simianarmy.conformity.notification.ccEmails", ""), ",");
-        sourceEmail = configuration().getStrOrElse("simianarmy.conformity.notification.sourceEmail", null);
-        conformityEmailBuilder = new BasicConformityEmailBuilder();
-        emailNotifier = new ConformityEmailNotifier(getConformityEmailNotifierContext());
     }
 
     public ConformityEmailNotifier.Context getConformityEmailNotifierContext() {
@@ -274,5 +214,77 @@ public class BasicConformityMonkeyContext extends BasicSimianArmyContext impleme
     @Override
     public ConformityClusterTracker clusterTracker() {
         return clusterTracker;
+    }
+
+    private void initializeDiscoveryClient() {
+        LOGGER.info("Initializing Discovery client.");
+        Injector injector = Guice.createInjector(new EurekaModule());
+        DiscoveryClient discoveryClient = injector.getInstance(DiscoveryClient.class);
+        ConformityEurekaClient conformityEurekaClient = new BasicConformityEurekaClient(discoveryClient);
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.InstanceIsHealthyInEureka.enabled", false)) {
+            ruleEngine.addRule(new InstanceIsHealthyInEureka(conformityEurekaClient));
+        }
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.InstanceHasHealthCheckUrl.enabled", false)) {
+            ruleEngine.addRule(new InstanceHasHealthCheckUrl(conformityEurekaClient));
+        }
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.InstanceHasStatusUrl.enabled", false)) {
+            ruleEngine.addRule(new InstanceHasStatusUrl(conformityEurekaClient));
+        }
+    }
+
+
+    private void addRules() {
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.InstanceInSecurityGroup.enabled", false)) {
+            String requiredSecurityGroups = configuration().getStr(
+                    "simianarmy.conformity.rule.InstanceInSecurityGroup.requiredSecurityGroups");
+            if (!StringUtils.isBlank(requiredSecurityGroups)) {
+                ruleEngine.addRule(new InstanceInSecurityGroup(getAwsCredentialsProvider(),
+                        StringUtils.split(requiredSecurityGroups, ",")));
+            } else {
+                LOGGER.info("No required security groups is specified, "
+                        + "the conformity rule InstanceInSecurityGroup is ignored.");
+            }
+        }
+
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.InstanceTooOld.enabled", false)) {
+            ruleEngine.addRule(new InstanceTooOld(getAwsCredentialsProvider(), (int) configuration().getNumOrElse(
+                    "simianarmy.conformity.rule.InstanceTooOld.instanceAgeThreshold", 180)));
+        }
+
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.SameZonesInElbAndAsg.enabled", false)) {
+            ruleEngine().addRule(new SameZonesInElbAndAsg(getAwsCredentialsProvider()));
+        }
+
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.InstanceInVPC.enabled", false)) {
+            ruleEngine.addRule(new InstanceInVPC(getAwsCredentialsProvider()));
+        }
+
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.CrossZoneLoadBalancing.enabled", false)) {
+            ruleEngine().addRule(new CrossZoneLoadBalancing(getAwsCredentialsProvider()));
+        }
+    }
+
+    private void initializeContextParameters() {
+        regionToAwsClient.put(region(), awsClient());
+
+        clusterCrawler = new AWSClusterCrawler(regionToAwsClient, configuration());
+        sesClient = new AmazonSimpleEmailServiceClient();
+        if (configuration().getStr("simianarmy.aws.email.region") != null) {
+            sesClient.setRegion(Region.getRegion(Regions.fromName(configuration().getStr("simianarmy.aws.email.region"))));
+        }
+        defaultEmail = configuration().getStrOrElse("simianarmy.conformity.notification.defaultEmail", null);
+        ccEmails = StringUtils.split(
+                configuration().getStrOrElse("simianarmy.conformity.notification.ccEmails", ""), ",");
+        sourceEmail = configuration().getStrOrElse("simianarmy.conformity.notification.sourceEmail", null);
+        conformityEmailBuilder = new BasicConformityEmailBuilder();
+        emailNotifier = new ConformityEmailNotifier(getConformityEmailNotifierContext());
     }
 }
