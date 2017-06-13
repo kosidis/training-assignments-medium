@@ -174,17 +174,7 @@ public class EddaASGJanitorCrawler implements JanitorCrawler {
                 .withResourceType(AWSResourceType.ASG)
                 .withLaunchTime(new Date(createdTime));
 
-        JsonNode tags = jsonNode.get("tags");
-        if (tags == null || !tags.isArray() || tags.size() == 0) {
-            LOGGER.debug(String.format("No tags is found for %s", resource.getId()));
-        } else {
-            for (Iterator<JsonNode> it = tags.getElements(); it.hasNext();) {
-                JsonNode tag = it.next();
-                String key = tag.get("key").getTextValue();
-                String value = tag.get("value").getTextValue();
-                resource.setTag(key, value);
-            }
-        }
+        resource = setTag(resource, jsonNode);
 
         String owner = getOwnerEmailForResource(resource);
         if (owner != null) {
@@ -195,32 +185,22 @@ public class EddaASGJanitorCrawler implements JanitorCrawler {
             resource.setAdditionalField(ASG_FIELD_MAX_SIZE, String.valueOf(maxSize.getIntValue()));
         }
         // Adds instances and ELBs as additional fields.
-        JsonNode instances = jsonNode.get("instances");
-        resource.setDescription(String.format("%d instances", instances.size()));
-        List<String> instanceIds = Lists.newArrayList();
-        for (Iterator<JsonNode> it = instances.getElements(); it.hasNext();) {
-            instanceIds.add(it.next().get("instanceId").getTextValue());
-        }
-        resource.setAdditionalField(ASG_FIELD_INSTANCES, StringUtils.join(instanceIds, ","));
-        JsonNode elbs = jsonNode.get("loadBalancerNames");
-        List<String> elbNames = Lists.newArrayList();
-        for (Iterator<JsonNode> it = elbs.getElements(); it.hasNext();) {
-            elbNames.add(it.next().getTextValue());
-        }
-        resource.setAdditionalField(ASG_FIELD_ELBS, StringUtils.join(elbNames, ","));
+        resource = setELBs(jsonNode, resource);
 
-        JsonNode lc = jsonNode.get("launchConfigurationName");
-        if (lc != null) {
-            String lcName = lc.getTextValue();
-            Long lcCreationTime = lcNameToCreationTime.get(lcName);
-            if (lcName != null) {
-                resource.setAdditionalField(ASG_FIELD_LC_NAME, lcName);
-            }
-            if (lcCreationTime != null) {
-                resource.setAdditionalField(ASG_FIELD_LC_CREATION_TIME, String.valueOf(lcCreationTime));
-            }
-        }
+        resource = addInstances(jsonNode, lcNameToCreationTime, resource);
+
         // sets the field for the time when the ASG's traffic is suspended from ELB
+        resource = setTimeFields(jsonNode, asgName, resource);
+
+        Long lastChangeTime = regionToAsgToLastChangeTime.get(region).get(asgName);
+        if (lastChangeTime != null) {
+            resource.setAdditionalField(ASG_FIELD_LAST_CHANGE_TIME, String.valueOf(lastChangeTime));
+        }
+        return resource;
+
+    }
+
+    private Resource setTimeFields(JsonNode jsonNode, String asgName, Resource resource) {
         JsonNode suspendedProcesses = jsonNode.get("suspendedProcesses");
         for (Iterator<JsonNode> it = suspendedProcesses.getElements(); it.hasNext();) {
             JsonNode sp = it.next();
@@ -234,12 +214,39 @@ public class EddaASGJanitorCrawler implements JanitorCrawler {
                 }
             }
         }
-        Long lastChangeTime = regionToAsgToLastChangeTime.get(region).get(asgName);
-        if (lastChangeTime != null) {
-            resource.setAdditionalField(ASG_FIELD_LAST_CHANGE_TIME, String.valueOf(lastChangeTime));
+        return resource;
+    }
+
+    private Resource addInstances(JsonNode jsonNode, Map<String, Long> lcNameToCreationTime, Resource resource) {
+        JsonNode lc = jsonNode.get("launchConfigurationName");
+        if (lc != null) {
+            String lcName = lc.getTextValue();
+            Long lcCreationTime = lcNameToCreationTime.get(lcName);
+            if (lcName != null) {
+                resource.setAdditionalField(ASG_FIELD_LC_NAME, lcName);
+            }
+            if (lcCreationTime != null) {
+                resource.setAdditionalField(ASG_FIELD_LC_CREATION_TIME, String.valueOf(lcCreationTime));
+            }
         }
         return resource;
+    }
 
+    private Resource setELBs(JsonNode jsonNode, Resource resource) {
+        JsonNode instances = jsonNode.get("instances");
+        resource.setDescription(String.format("%d instances", instances.size()));
+        List<String> instanceIds = Lists.newArrayList();
+        for (Iterator<JsonNode> it = instances.getElements(); it.hasNext();) {
+            instanceIds.add(it.next().get("instanceId").getTextValue());
+        }
+        resource.setAdditionalField(ASG_FIELD_INSTANCES, StringUtils.join(instanceIds, ","));
+        JsonNode elbs = jsonNode.get("loadBalancerNames");
+        List<String> elbNames = Lists.newArrayList();
+        for (Iterator<JsonNode> it = elbs.getElements(); it.hasNext();) {
+            elbNames.add(it.next().getTextValue());
+        }
+        resource.setAdditionalField(ASG_FIELD_ELBS, StringUtils.join(elbNames, ","));
+        return resource;
     }
 
     private Map<String, Long> getLaunchConfigCreationTimes(String region) {
@@ -313,6 +320,21 @@ public class EddaASGJanitorCrawler implements JanitorCrawler {
                 asgToLastChangeTime.put(asgName, lastChangeTime);
             }
         }
+    }
+
+    private Resource setTag(Resource resource, JsonNode jsonNode) {
+        JsonNode tags = jsonNode.get("tags");
+        if (tags == null || !tags.isArray() || tags.size() == 0) {
+            LOGGER.debug(String.format("No tags is found for %s", resource.getId()));
+        } else {
+            for (Iterator<JsonNode> it = tags.getElements(); it.hasNext();) {
+                JsonNode tag = it.next();
+                String key = tag.get("key").getTextValue();
+                String value = tag.get("value").getTextValue();
+                resource.setTag(key, value);
+            }
+        }
+        return resource;
     }
 
 }
