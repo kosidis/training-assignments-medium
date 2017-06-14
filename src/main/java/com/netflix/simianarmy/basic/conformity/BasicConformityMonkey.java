@@ -201,31 +201,34 @@ public class BasicConformityMonkey extends ConformityMonkey {
             }
             StringBuilder message = new StringBuilder();
             for (String region : regions) {
-                appendSummary(message, "nonconforming", nonconformingClusters, region, true);
-                appendSummary(message, "failed to check", failedClusters, region, true);
-                appendSummary(message, "nonexistent", nonexistentClusters, region, true);
-                appendSummary(message, "conforming", conformingClusters, region, false);
+                message.append(createSummary(MessageSummary.create().summaryName("nonconforming").region(region).showDetails(true), nonconformingClusters));
+                message.append(createSummary(MessageSummary.create().summaryName("failed to check").region(region).showDetails(true), failedClusters));
+                message.append(createSummary(MessageSummary.create().summaryName("nonexistent").region(region).showDetails(true), nonexistentClusters));
+                message.append(createSummary(MessageSummary.create().summaryName("conforming").region(region).showDetails(false), conformingClusters));
             }
             String subject = getSummaryEmailSubject();
             emailNotifier.sendEmail(summaryEmailTarget, subject, message.toString());
         }
     }
 
-    private void appendSummary(StringBuilder message, String summaryName,
-                               Map<String, Collection<Cluster>> regionToClusters, String region, boolean showDetails) {
-        Collection<Cluster> clusters = regionToClusters.get(region);
+    private String createSummary(MessageSummary messageSummary, Map<String, Collection<Cluster>> regionToClusters) {
+        StringBuilder message = new StringBuilder();
+
+        Collection<Cluster> clusters = regionToClusters.get(messageSummary.getRegion());
         if (clusters == null) {
             clusters = Lists.newArrayList();
         }
         message.append(String.format("Total %s clusters = %d in region %s<br/>",
-                summaryName, clusters.size(), region));
-        if (showDetails) {
+            messageSummary.getSummaryName(), clusters.size(), messageSummary.getRegion()));
+        if (messageSummary.isShowDetails()) {
             List<String> clusterNames = Lists.newArrayList();
             for (Cluster cluster : clusters) {
                 clusterNames.add(cluster.getName());
             }
             message.append(String.format("List: %s<br/><br/>", StringUtils.join(clusterNames, ",")));
         }
+
+        return message.toString();
     }
 
     /**
@@ -243,5 +246,42 @@ public class BasicConformityMonkey extends ConformityMonkey {
         }
         LOGGER.info("Conformity Monkey is disabled, set {}=true", prop);
         return false;
+    }
+
+    static class MessageSummary {
+        String summaryName;
+        String region;
+        boolean showDetails;
+
+        public static MessageSummary create() {
+            return new MessageSummary();
+        }
+
+        public MessageSummary summaryName(String summaryName) {
+            this.summaryName = summaryName;
+            return this;
+        }
+
+        public MessageSummary region(String region) {
+            this.region = region;
+            return this;
+        }
+
+        public MessageSummary showDetails(boolean showDetails) {
+            this.showDetails = showDetails;
+            return this;
+        }
+
+        public String getSummaryName() {
+            return summaryName;
+        }
+
+        public String getRegion() {
+            return region;
+        }
+
+        public boolean isShowDetails() {
+            return showDetails;
+        }
     }
 }
