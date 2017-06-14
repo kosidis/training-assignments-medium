@@ -25,6 +25,8 @@ import java.util.Map;
 
 import com.google.common.collect.Maps;
 
+import com.netflix.simianarmy.aws.janitor.rule.JanitorMetaTag;
+import com.netflix.simianarmy.aws.janitor.rule.MetaTag;
 import com.netflix.simianarmy.basic.BasicSimianArmyContext;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
@@ -194,7 +196,17 @@ public class VolumeTaggingMonkey extends Monkey {
                 owner = existingOwner;
             }
             if (needsUpdate(janitorMetadata, owner, instanceId, lastDetachTime)) {
-                Event evt = updateJanitorMetaTag(volume, instanceId, owner, lastDetachTime, awsClient);
+                MetaTag metaTag = new MetaTag();
+                metaTag.setInstance(instanceId);
+                metaTag.setLastDetachTime(lastDetachTime);
+                metaTag.setOwner(owner);
+
+                JanitorMetaTag janitorMetaTag = new JanitorMetaTag();
+                janitorMetaTag.setMetaTag(metaTag);
+                janitorMetaTag.setVolume(volume);
+                janitorMetaTag.setAwsClient(awsClient);
+
+                Event evt = updateJanitorMetaTag(janitorMetaTag);
                 if (evt != null) {
                     context().recorder().recordEvent(evt);
                 }
@@ -257,25 +269,24 @@ public class VolumeTaggingMonkey extends Monkey {
         return config.getStrOrElse("simianarmy.volumeTagging.ownerEmailDomain", "");
     }
 
-    private Event updateJanitorMetaTag(Volume volume, String instance, String owner, Date lastDetachTime,
-                                       AWSClient awsClient) {
-        String meta = makeMetaTag(instance, owner, lastDetachTime);
+    private Event updateJanitorMetaTag(JanitorMetaTag janitorMetaTag) {
+        String meta = makeMetaTag(janitorMetaTag.getMetaTag());
         Map<String, String> janitorTags = new HashMap<String, String>();
         janitorTags.put(JanitorMonkey.JANITOR_META_TAG, meta);
         LOGGER.info(String.format("Setting tag %s to '%s' for volume %s",
-                JanitorMonkey.JANITOR_META_TAG, meta, volume.getVolumeId()));
+                JanitorMonkey.JANITOR_META_TAG, meta, janitorMetaTag.getVolume().getVolumeId()));
         String prop = "simianarmy.volumeTagging.leashed";
         Event evt = null;
         if (config.getBoolOrElse(prop, true)) {
             LOGGER.info("Volume tagging monkey is leashed. No real change is made to the volume.");
         } else {
             try {
-                awsClient.createTagsForResources(janitorTags, volume.getVolumeId());
+                janitorMetaTag.getAwsClient().createTagsForResources(janitorTags, janitorMetaTag.getVolume().getVolumeId());
                 evt = context().recorder().newEvent(type(), EventTypes.TAGGING_JANITOR,
-                        awsClient.region(), volume.getVolumeId());
+                        janitorMetaTag.getAwsClient().region(), janitorMetaTag.getVolume().getVolumeId());
                 evt.addField(JanitorMonkey.JANITOR_META_TAG, meta);
             } catch (Exception e) {
-                LOGGER.error(String.format("Failed to update the tag for volume %s", volume.getVolumeId()));
+                LOGGER.error(String.format("Failed to update the tag for volume %s", janitorMetaTag.getVolume().getVolumeId()));
             }
         }
         return evt;
@@ -289,13 +300,13 @@ public class VolumeTaggingMonkey extends Monkey {
      * @param lastDetachTime the detach time
      * @return the meta tag of Janitor Monkey
      */
-    public static String makeMetaTag(String instance, String owner, Date lastDetachTime) {
+    public static String makeMetaTag(MetaTag metaTag) {
         StringBuilder meta = new StringBuilder();
         meta.append(String.format("%s=%s;",
-                JanitorMonkey.INSTANCE_TAG_KEY, instance == null ? "" : instance));
-        meta.append(String.format("%s=%s;", BasicSimianArmyContext.GLOBAL_OWNER_TAGKEY, owner == null ? "" : owner));
+                JanitorMonkey.INSTANCE_TAG_KEY, metaTag.getInstance() == null ? "" : metaTag.getInstance()));
+        meta.append(String.format("%s=%s;", BasicSimianArmyContext.GLOBAL_OWNER_TAGKEY, metaTag.getOwner() == null ? "" : metaTag.getOwner()));
         meta.append(String.format("%s=%s", JanitorMonkey.DETACH_TIME_TAG_KEY,
-                lastDetachTime == null ? "" : AWSResource.DATE_FORMATTER.print(lastDetachTime.getTime())));
+                metaTag.getLastDetachTime() == null ? "" : AWSResource.DATE_FORMATTER.print(metaTag.getLastDetachTime().getTime())));
         return meta.toString();
     }
 
